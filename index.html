@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بجاد الأثري - خلفية تقنية متحركة</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #020617;
+        }
+        .tiktok-wrapper {
+            aspect-ratio: 9 / 16;
+            width: 100%;
+            max-width: 440px;
+        }
+    </style>
+</head>
+<body class="flex flex-col lg:flex-row items-center justify-center min-h-screen p-4 lg:p-8 gap-8 bg-slate-950 text-white relative">
+
+    <div id="customToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 bg-red-600/95 border border-red-500 text-white px-6 py-3 rounded-xl shadow-2xl z-50 hidden transition-all duration-300 font-bold text-sm text-center"></div>
+
+    <div class="w-full lg:w-96 bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl z-20">
+        <h2 class="text-xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-l from-emerald-400 to-cyan-400">لوحة التحكم والتصدير</h2>
+        <p class="text-xs text-slate-400 mb-6">خلفية شبكية (Grid) متحركة بالكامل بالألوان الخضراء والزرقاء النيون المستوحاة من صورتك جاهزة للتصدير كفيديو دائرى لا ينتهي.</p>
+        
+        <div class="mb-6">
+            <label class="block text-sm font-bold text-cyan-400 mb-2">اختر مدة الفيديو للتصدير:</label>
+            <div class="grid grid-cols-3 gap-2">
+                <button onclick="setDuration(5)" id="btn-5" class="duration-btn py-2 px-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold transition-all text-white">5 ثوانٍ</button>
+                <button onclick="setDuration(10)" id="btn-10" class="duration-btn py-2 px-1 rounded-lg bg-emerald-600 border border-emerald-500 text-xs font-bold transition-all text-slate-950">10 ثوانٍ</button>
+                <button onclick="setDuration(15)" id="btn-15" class="duration-btn py-2 px-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold transition-all text-white">15 ثانية</button>
+            </div>
+        </div>
+
+        <button id="export-btn" onclick="startExport()" class="w-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-emerald-600 hover:from-emerald-600 hover:to-cyan-600 text-slate-950 font-black py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all active:scale-95">
+            <i class="fa-solid fa-circle-notch animate-spin hidden" id="spinner"></i>
+            <i class="fa-solid fa-floppy-disk" id="video-icon"></i>
+            <span id="btn-text">حفظ وتصدير الفيديو</span>
+        </button>
+
+        <div id="progress-container" class="mt-4 hidden">
+            <div class="flex justify-between text-xs text-emerald-400 mb-1">
+                <span>جاري تسجيل وحفظ المقطع بجودة عالية وسلاسة...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div id="progress-bar" class="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full w-0 transition-all duration-100"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tiktok-wrapper relative rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(16,185,129,0.15)] border-4 border-slate-900 bg-black z-10">
+        <canvas id="renderCanvas" class="w-full h-full object-cover"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('renderCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const WIDTH = 1080;
+        const HEIGHT = 1920;
+        canvas.width = WIDTH;
+        canvas.height = HEIGHT;
+
+        let selectedDuration = 10; 
+        let isRecording = false;
+        let lastTime = performance.now();
+
+        const colors = {
+            limeGreen: '#22c55e',
+            cyanBlue: '#06b6d4',
+            gridLine: 'rgba(34, 197, 94, 0.035)',
+            blockGlow: '34, 197, 94',
+            blockGlowAlt: '6, 182, 212'
+        };
+
+        const config = {
+            gridOffset: 0,
+            gridSpeed: 50, 
+            particles: [],
+            gridBlocks: []
+        };
+
+        const gridSize = 120;
+        const cols = Math.ceil(WIDTH / gridSize);
+        const rows = Math.ceil(HEIGHT / gridSize);
+
+        // توليد أجسام عائمة في الخلفية
+        for (let i = 0; i < 15; i++) {
+            config.particles.push({
+                x: Math.random() * WIDTH,
+                y: Math.random() * HEIGHT,
+                radius: 100 + Math.random() * 150,
+                color: Math.random() > 0.5 ? 'rgba(34, 197, 94, 0.05)' : 'rgba(6, 182, 212, 0.05)',
+                speedX: (Math.random() - 0.5) * 20, 
+                speedY: (Math.random() - 0.5) * 20
+            });
+        }
+
+        function showNotification(message) {
+            const toast = document.getElementById('customToast');
+            toast.innerText = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3500);
+        }
+
+        function setDuration(sec) {
+            selectedDuration = sec;
+            document.querySelectorAll('.duration-btn').forEach(btn => {
+                btn.className = "duration-btn py-2 px-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold transition-all text-white";
+            });
+            const activeId = `btn-${sec}`;
+            document.getElementById(activeId).className = "duration-btn py-2 px-1 rounded-lg bg-emerald-600 border border-emerald-500 text-xs font-bold transition-all text-slate-950";
+        }
+
+        function updateGridBlocks(dt, currentTime) {
+            const loopDuration = selectedDuration * 1000;
+            const cycleTime = currentTime % loopDuration;
+
+            if (Math.random() < 0.4 && config.gridBlocks.length < 45) {
+                const seed = Math.random();
+                const lifespan = 6000 + Math.random() * 3000;
+                
+                config.gridBlocks.push({
+                    id: Math.random().toString(36).substr(2, 9),
+                    col: Math.floor(Math.random() * cols),
+                    row: Math.floor(Math.random() * rows),
+                    color: seed > 0.5 ? colors.blockGlow : colors.blockGlowAlt,
+                    spawnTime: cycleTime,
+                    lifespan: lifespan,
+                    maxAlpha: 0.12 + Math.random() * 0.15
+                });
+            }
+
+            let activeBlocks = [];
+
+            config.gridBlocks.forEach(block => {
+                let age = cycleTime - block.spawnTime;
+                if (age < 0) age += loopDuration;
+
+                if (age < block.lifespan) {
+                    let alpha = 0;
+                    const fadePercent = 0.4;
+                    const fadeTime = block.lifespan * fadePercent;
+
+                    if (age < fadeTime) {
+                        alpha = (age / fadeTime) * block.maxAlpha;
+                    } else if (age > block.lifespan - fadeTime) {
+                        alpha = ((block.lifespan - age) / fadeTime) * block.maxAlpha;
+                    } else {
+                        alpha = block.maxAlpha;
+                    }
+
+                    activeBlocks.push({
+                        col: block.col,
+                        row: block.row,
+                        color: block.color,
+                        alpha: alpha
+                    });
+                }
+            });
+
+            config.gridBlocks = config.gridBlocks.filter(block => {
+                let age = cycleTime - block.spawnTime;
+                if (age < 0) age += loopDuration;
+                return age < block.lifespan;
+            });
+
+            return activeBlocks;
+        }
+
+        function drawFrame(now) {
+            const loopDuration = selectedDuration * 1000;
+            const cycleTime = now % loopDuration;
+            const dt = (now - lastTime) / 1000; 
+            lastTime = now;
+
+            if (dt > 0.1) return requestAnimationFrame(drawFrame);
+
+            // 1. الخلفية الداكنة
+            const bgGrad = ctx.createRadialGradient(WIDTH/2, HEIGHT/2, 50, WIDTH/2, HEIGHT/2, WIDTH);
+            bgGrad.addColorStop(0, '#041214');
+            bgGrad.addColorStop(0.7, '#020511');
+            bgGrad.addColorStop(1, '#000000');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // 2. شبكة خطوط التقنية المتحركة المربوطة بالـ Loop
+            ctx.strokeStyle = colors.gridLine;
+            ctx.lineWidth = 1.5;
+            config.gridOffset = (config.gridSpeed * (cycleTime / 1000)) % gridSize;
+            
+            for (let x = config.gridOffset; x < WIDTH; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, HEIGHT); ctx.stroke();
+            }
+            for (let y = config.gridOffset; y < HEIGHT; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WIDTH, y); ctx.stroke();
+            }
+
+            // 3. المربعات المضيئة
+            const blocksToRender = updateGridBlocks(dt, now);
+            blocksToRender.forEach(block => {
+                ctx.save();
+                ctx.fillStyle = `rgba(${block.color}, ${block.alpha})`;
+                ctx.strokeStyle = `rgba(${block.color}, ${block.alpha * 1.5})`;
+                ctx.lineWidth = 2;
+                const bx = block.col * gridSize + config.gridOffset;
+                const by = block.row * gridSize + config.gridOffset;
+                ctx.beginPath();
+                ctx.roundRect(bx + 6, by + 6, gridSize - 12, gridSize - 12, 16);
+                ctx.fill(); ctx.stroke();
+                ctx.restore();
+            });
+
+            // 4. الغيوم الضوئية العائمة
+            config.particles.forEach((p, idx) => {
+                const totalProgress = cycleTime / loopDuration;
+                const angle = totalProgress * Math.PI * 2 + (idx * 5);
+                const currentX = (p.x + Math.sin(angle) * 150) % WIDTH;
+                const currentY = (p.y + Math.cos(angle) * 150) % HEIGHT;
+
+                const orbGrad = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, p.radius);
+                orbGrad.addColorStop(0, p.color);
+                orbGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = orbGrad;
+                ctx.beginPath(); ctx.arc(currentX, currentY, p.radius, 0, Math.PI * 2); ctx.fill();
+            });
+
+            // 5. خطوط الضوء المتموجة
+            ctx.save();
+            ctx.strokeStyle = 'rgba(6, 182, 212, 0.08)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let x = 0; x < WIDTH; x += 10) {
+                const loopAngle = (cycleTime / loopDuration) * Math.PI * 2;
+                const y = HEIGHT * 0.5 + Math.sin(x * 0.002 + loopAngle) * 60;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.restore();
+
+            // 6. الهيكل السفلي الموحد
+            const footerY = HEIGHT - 200; 
+            const loopAngleBounce = (cycleTime / loopDuration) * Math.PI * 4;
+            const bounceOffset = Math.sin(loopAngleBounce) * 5;
+
+            ctx.save();
+            const panelX = 140;
+            const panelY = footerY - 80;
+            const panelW = WIDTH - 280;
+            const panelH = 190; // تقليص الطول لعدم وجود وصف
+
+            // خلفية اللوحة السفلية المدمجة
+            const borderGrad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
+            borderGrad.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
+            borderGrad.addColorStop(1, 'rgba(6, 182, 212, 0.4)');
+            ctx.strokeStyle = borderGrad;
+            ctx.lineWidth = 3;
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+            
+            ctx.beginPath();
+            ctx.roundRect(panelX, panelY, panelW, panelH, 24);
+            ctx.fill(); ctx.stroke();
+
+            // رسم الاسم داخل اللوحة
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 46px "Cairo"';
+            ctx.textAlign = 'center';
+            ctx.fillText('بجاد الأثري', panelX + panelW / 2, panelY + 65);
+
+            // رسم الأيقونات بجانب يوزر واحد موحد في المنتصف
+            const btnY = panelY + 130;
+            const centerX = panelX + panelW / 2;
+
+            // أيقونة اليوتيوب الصغيرة المدمجة
+            ctx.save();
+            const ytGrad = ctx.createLinearGradient(centerX - 240, btnY - 30, centerX - 180, btnY + 30);
+            ytGrad.addColorStop(0, '#ef4444'); ytGrad.addColorStop(1, '#b91c1c');
+            ctx.fillStyle = ytGrad;
+            ctx.beginPath(); ctx.arc(centerX - 190, btnY + bounceOffset, 32, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.font = '900 30px "Font Awesome 6 Brands"';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('\uf167', centerX - 190, btnY + bounceOffset);
+            ctx.restore();
+
+            // أيقونة التلجرام الصغيرة المدمجة
+            ctx.save();
+            const tgGrad = ctx.createLinearGradient(centerX + 180, btnY - 30, centerX + 240, btnY + 30);
+            tgGrad.addColorStop(0, '#0284c7'); tgGrad.addColorStop(1, '#0369a1');
+            ctx.fillStyle = tgGrad;
+            ctx.beginPath(); ctx.arc(centerX + 190, btnY - bounceOffset, 32, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.font = '900 30px "Font Awesome 6 Brands"';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('\uf2c6', centerX + 190, btnY - bounceOffset);
+            ctx.restore();
+
+            // النص الموحد لليوزر في المنتصف بين الأيقونتين
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.font = 'bold 26px "Cairo"';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('@bidjadraft', centerX, btnY);
+
+            ctx.restore();
+
+            requestAnimationFrame(drawFrame);
+        }
+
+        requestAnimationFrame(drawFrame);
+
+        // --- نظام تصدير الفيديو بسلاسة فائقة ودائرية لانهائية دقيقة جداً ---
+        async function startExport() {
+            if (isRecording) return;
+            isRecording = true;
+
+            document.getElementById('spinner').classList.remove('hidden');
+            document.getElementById('video-icon').classList.add('hidden');
+            document.getElementById('export-btn').disabled = true;
+            document.getElementById('progress-container').classList.remove('hidden');
+
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercent = document.getElementById('progress-percent');
+
+            const videoStream = canvas.captureStream(30); 
+            const chunks = [];
+            const mediaRecorder = new MediaRecorder(videoStream, {
+                mimeType: 'video/webm; codecs=vp9', 
+                videoBitsPerSecond: 9000000 
+            });
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `bejad_infinite_loop_${selectedDuration}s.webm`;
+                a.click();
+
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    document.getElementById('spinner').classList.add('hidden');
+                    document.getElementById('video-icon').classList.remove('hidden');
+                    document.getElementById('export-btn').disabled = false;
+                    document.getElementById('progress-container').classList.add('hidden');
+                    isRecording = false;
+                }, 1000);
+            };
+
+            mediaRecorder.start();
+
+            const totalMs = selectedDuration * 1000;
+            const startTimestamp = Date.now();
+
+            const interval = setInterval(() => {
+                const elapsed = Date.now() - startTimestamp;
+                const percent = Math.min((elapsed / totalMs) * 100, 100);
+                
+                progressBar.style.width = `${percent}%`;
+                progressPercent.innerText = `${Math.floor(percent)}%`;
+
+                if (elapsed >= totalMs) {
+                    clearInterval(interval);
+                    mediaRecorder.stop();
+                }
+            }, 100);
+        }
+    </script>
+</body>
+</html>
