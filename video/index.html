@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customizable Moving Grid</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #0c0c0d;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            gap: 30px;
+            padding: 20px;
+            direction: rtl;
+        }
+        #canvasContainer {
+            position: relative;
+            width: 360px;
+            height: 640px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #sidebar {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 320px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-size: 14px;
+            color: #ccc;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #8a2be2;
+        }
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: none;
+        }
+        button {
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #8a2be2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #a040ff;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column-reverse;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h3>إعدادات الخلفية</h3>
+        
+        <div class="control-group">
+            <label for="gridColor">لون الخطوط:</label>
+            <input type="color" id="gridColor" value="#ba55d3">
+        </div>
+
+        <div class="control-group">
+            <label for="gridSize">حجم المربعات (عدد أقل يعني مربعات أكثر):</label>
+            <input type="range" id="gridSize" min="20" max="120" value="60">
+        </div>
+
+        <div class="control-group">
+            <label for="speed">سرعة الحركة:</label>
+            <input type="range" id="speed" min="0" max="10" step="0.5" value="2">
+        </div>
+
+        <div class="control-group">
+            <label for="waveAmp">قوة التموج (الامواج):</label>
+            <input type="range" id="waveAmp" min="0" max="50" value="20">
+        </div>
+
+        <div class="control-group">
+            <label for="waveFreq">تردد التموج:</label>
+            <input type="range" id="waveFreq" min="1" max="10" value="4">
+        </div>
+
+        <button id="recordBtn">حفظ كفيديو (15 ثانية)</button>
+    </div>
+
+    <div id="canvasContainer">
+        <canvas id="gridCanvas" width="720" height="1280"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // عناصر التحكم
+        const colorInput = document.getElementById('gridColor');
+        const sizeInput = document.getElementById('gridSize');
+        const speedInput = document.getElementById('speed');
+        const waveAmpInput = document.getElementById('waveAmp');
+        const waveFreqInput = document.getElementById('waveFreq');
+        const recordBtn = document.getElementById('recordBtn');
+
+        const width = canvas.width;
+        const height = canvas.height;
+
+        let offsetY = 0;
+        let wavePhase = 0;
+
+        // دالة تحويل اللون الـ Hex إلى RGB مع إمكانية إضافة الشفافية
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 138, g: 43, b: 226 };
+        }
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, width, height);
+
+            const hexColor = colorInput.value;
+            const rgb = hexToRgb(hexColor);
+            const gridSize = parseInt(sizeInput.value);
+            const speed = parseFloat(speedInput.value);
+            const waveAmp = parseInt(waveAmpInput.value);
+            const waveFreq = parseInt(waveFreqInput.value) / 1000;
+
+            // ضبط الخلفية المتدرجة بناءً على اللون المختار
+            let gradient = ctx.createRadialGradient(width/2, height/2, 10, width/2, height/2, height/1.2);
+            gradient.addColorStop(0, `rgba(${Math.floor(rgb.r*0.4)}, ${Math.floor(rgb.g*0.1)}, ${Math.floor(rgb.b*0.4)}, 1)`);
+            gradient.addColorStop(1, '#08020f');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // إعدادات الخطوط والتوهج
+            ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`;
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7)`;
+
+            // رسم الخطوط الطولية (المموجة)
+            for (let x = 0; x <= width + gridSize; x += gridSize) {
+                ctx.beginPath();
+                for (let y = 0; y <= height; y += 10) {
+                    // إضافة تأثير التموج السينوسي (Sine Wave) بناءً على الارتفاع والوقت
+                    let waveX = x + Math.sin(y * waveFreq + wavePhase) * waveAmp;
+                    if (y === 0) {
+                        ctx.moveTo(waveX, y);
+                    } else {
+                        ctx.lineTo(waveX, y);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            // رسم الخطوط العرضية المتحركة
+            let startY = offsetY % gridSize;
+            for (let y = startY - gridSize; y <= height + gridSize; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            ctx.shadowBlur = 0; 
+
+            // تحديث الحركة والتموج
+            offsetY += speed;
+            wavePhase += speed * 0.01;
+
+            requestAnimationFrame(drawGrid);
+        }
+
+        drawGrid();
+
+        // كود تسجيل الفيديو
+        recordBtn.addEventListener('click', () => {
+            recordBtn.disabled = true;
+            recordBtn.innerText = 'جاري التسجيل...';
+
+            const stream = canvas.captureStream(30); 
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'video/webm;codecs=vp9'
+            });
+
+            const chunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'custom-grid-motion.webm';
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                recordBtn.disabled = false;
+                recordBtn.innerText = 'حفظ كفيديو (15 ثانية)';
+            };
+
+            mediaRecorder.start();
+
+            setTimeout(() => {
+                mediaRecorder.stop();
+            }, 15000); 
+        });
+    </script>
+</body>
+</html>
